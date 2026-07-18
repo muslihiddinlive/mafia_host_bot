@@ -15,20 +15,25 @@
 
 from .bot import bot
 from .database import database
+from . import i18n
 
 
-role_titles = {
-    'don': 'дон мафии',
-    'mafia': 'мафия',
-    'sheriff': 'шериф',
-    'peace': 'мирный житель'
-}
+ROLES = ('don', 'mafia', 'sheriff', 'peace')
 
 
-def stop_game(game, reason):
+def role_title(role, chat_id):
+    return i18n.t(chat_id, f'role_{role}')
+
+
+def stop_game(game, reason_key, **reason_kwargs):
+    reason = i18n.t(game['chat'], reason_key, **reason_kwargs)
+    roles_text = '\n'.join(
+        f'{i + 1}. {p["name"]} - {role_title(p.get("role", "?"), game["chat"])}'
+        for i, p in enumerate(game['players'])
+    )
     bot.try_to_send_message(
         game['chat'],
-        f'Игра окончена! {reason}\n\nРоли были распределены следующим образом:\n' +
-        '\n'.join([f'{i+1}. {p["name"]} - {role_titles[p.get("role", "?")]}' for i, p in enumerate(game['players'])])
+        i18n.t(game['chat'], 'game_over_roles_reveal', reason=reason, roles=roles_text)
     )
     database.games.delete_one({'_id': game['_id']})
+

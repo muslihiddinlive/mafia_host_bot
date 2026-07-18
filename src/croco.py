@@ -17,6 +17,8 @@
 import config
 from .bot import bot
 from .database import database
+from . import i18n
+from . import stats
 
 import re
 import codecs
@@ -42,19 +44,11 @@ def croco_suggestion(suggestion, game, user, message_id):
     increments = {'croco.total': 1}
     if user['id'] == game['player']:
         increments['croco.cheat'] = 1
-        answer = 'Игра окончена! Нельзя самому называть слово!'
+        answer = i18n.t(game['chat'], 'croco_cant_name_own_word')
     else:
         increments['croco.win'] = 1
-        database.stats.update_one(
-            {'id': user['id'], 'chat': game['chat']},
-            {'$set': {'name': user['full_name']}, '$inc': {'croco.guesses': 1}},
-            upsert=True
-        )
-        answer = 'Игра окончена! Это верное слово!'
+        stats.increment(game['chat'], user['id'], user['full_name'], {'croco.guesses': 1})
+        answer = i18n.t(game['chat'], 'croco_correct_word')
     bot.send_message(game['chat'], answer, reply_to_message_id=message_id)
     database.games.delete_one({'_id': game['_id']})
-    database.stats.update_one(
-        {'id': game['player'], 'chat': game['chat']},
-        {'$set': {'name': game['full_name']}, '$inc': increments},
-        upsert=True
-    )
+    stats.increment(game['chat'], game['player'], game['full_name'], increments)

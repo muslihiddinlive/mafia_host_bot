@@ -14,14 +14,14 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from . import lang
+from . import i18n
+from . import economy
 from .bot import bot
-from .database import database
-from .game import role_titles
+from .database import database, ReturnDocument
+from .game import role_title
 
 import random
 from time import time
-from pymongo.collection import ReturnDocument
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from telebot.apihelper import ApiException
 
@@ -70,7 +70,7 @@ def go_to_next_stage(game, inc=1):
 
 def format_roles(game, show_roles=False, condition=lambda p: p.get('alive', True)):
     return '\n'.join(
-        [f'{i + 1}. {p["name"]}{" - " + role_titles[p["role"]] if show_roles else ""}'
+        [f'{i + 1}. {p["name"]}{" - " + role_title(p["role"], game["chat"]) if show_roles else ""}'
          for i, p in enumerate(game['players']) if condition(p)]
     )
 
@@ -83,7 +83,7 @@ def first_stage():
 @add_stage(-3, delete=True)
 def cards_not_taken(game):
     bot.edit_message_text(
-        'Игра окончена! Игроки не взяли свои карты.',
+        i18n.t(game['chat'], 'game_over_no_cards'),
         chat_id=game['chat'],
         message_id=game['message_id']
     )
@@ -95,6 +95,7 @@ def set_order(game):
         go_to_next_stage(game, inc=2)
         return
 
+    chat = game['chat']
     keyboard = InlineKeyboardMarkup(row_width=8)
     keyboard.add(
         *[InlineKeyboardButton(
@@ -104,20 +105,25 @@ def set_order(game):
     )
     keyboard.row(
         InlineKeyboardButton(
-            text='Познакомиться с командой',
+            text=i18n.t(chat, 'meet_team_button'),
             callback_data='mafia team'
         )
     )
+    finish_selection = i18n.t(chat, 'finish_selection_button')
     keyboard.row(
         InlineKeyboardButton(
-            text='Закончить выбор',
+            text=finish_selection,
             callback_data='end order'
         )
     )
 
     message_id = bot.send_message(
-        game['chat'],
-        f'{role_titles["don"].capitalize()}, тебе предстоит сделать свой выбор и определить порядок выстрелов твоей команды.\nДля этого последовательно нажимай на номера игроков, а после этого нажми на кнопку "Закончить выбор".',
+        chat,
+        i18n.t(
+            chat, 'don_choose_order_instruction',
+            don=role_title('don', chat).capitalize(),
+            finish_selection=finish_selection
+        ),
         reply_markup=keyboard
     ).message_id
 
@@ -126,17 +132,22 @@ def set_order(game):
 
 @add_stage(-1, 5)
 def get_order(game):
+    chat = game['chat']
     keyboard = InlineKeyboardMarkup()
     keyboard.add(
         InlineKeyboardButton(
-            text='✉ Получить приказ',
+            text=i18n.t(chat, 'get_order_button'),
             callback_data='get order'
         )
     )
 
     bot.edit_message_text(
-        f'{role_titles["don"].capitalize()} записал приказ. {role_titles["mafia"].capitalize()}, получите конверт со своим заданием!',
-        chat_id=game['chat'],
+        i18n.t(
+            chat, 'don_order_given_to_mafia',
+            don=role_title('don', chat).capitalize(),
+            mafia=role_title('mafia', chat).capitalize()
+        ),
+        chat_id=chat,
         message_id=game['message_id'],
         reply_markup=keyboard
     )
@@ -144,25 +155,25 @@ def get_order(game):
 
 @add_stage(0, lambda g: 90 + max(0, sum(p['alive'] for p in g['players']) - 4) * 35)
 def discussion(game):
+    chat = game['chat']
     if game['day_count'] > 1 and game.get('victim') is None:
         bot.edit_message_text(
-            lang.morning_message.format(
-                peaceful_night=(
-                    'Доброе утро, город!\n'
-                    'Этой ночью обошлось без смертей.\n'
-                ),
+            i18n.t(
+                chat, 'morning_message',
+                peaceful_night=i18n.t(chat, 'peaceful_night'),
                 day=game['day_count'],
                 order=format_roles(game)
             ),
-            chat_id=game['chat'],
+            chat_id=chat,
             message_id=game['message_id']
         )
     else:
         if game['day_count'] > 1:
             database.games.update_one({'_id': game['_id']}, {'$unset': {'victim': True}})
         bot.send_message(
-            game['chat'],
-            lang.morning_message.format(
+            chat,
+            i18n.t(
+                chat, 'morning_message',
                 peaceful_night='',
                 day=game['day_count'],
                 order=format_roles(game)
@@ -171,7 +182,8 @@ def discussion(game):
 
 
 def get_votes(game):
-    names = [(0, 'Не голосовать')] + [(i + 1, p['name']) for i, p in enumerate(game['players']) if p['alive']]
+    chat = game['chat']
+    names = [(0, i18n.t(chat, 'dont_vote_option'))] + [(i + 1, p['name']) for i, p in enumerate(game['players']) if p['alive']]
     return '\n'.join([
         f'{i}. {name}' + (
             (': ' + ', '.join(str(v + 1) for v in game['vote'][str(i - 1)]))
@@ -182,6 +194,7 @@ def get_votes(game):
 
 @add_stage(1, 30)
 def vote(game):
+    chat = game['chat']
     keyboard = InlineKeyboardMarkup(row_width=8)
     keyboard.add(
         *[InlineKeyboardButton(
@@ -191,14 +204,14 @@ def vote(game):
     )
     keyboard.add(
         InlineKeyboardButton(
-            text='Не голосовать',
+            text=i18n.t(chat, 'dont_vote_option'),
             callback_data='vote 0'
         )
     )
 
     message_id = bot.send_message(
-        game['chat'],
-        lang.vote.format(vote=get_votes(game)),
+        chat,
+        i18n.t(chat, 'vote_time', vote=get_votes(game)),
         reply_markup=keyboard
     ).message_id
 
@@ -207,6 +220,7 @@ def vote(game):
 
 @add_stage(2, 20)
 def last_words_criminal(game):
+    chat = game['chat']
     criminal = None
     if game['vote']:
         most_voted = max(game['vote'].values(), key=len)
@@ -214,16 +228,26 @@ def last_words_criminal(game):
         if len(candidates) == 1 and candidates[0] >= 0:
             criminal = candidates[0]
 
-    bot.edit_message_text(
-        f'Народным голосованием в тюрьму был посажен игрок {criminal+1} ({game["players"][criminal]["name"]}).'
-        if criminal is not None else 'Город не выбрал преступника.',
-        chat_id=game['chat'],
-        message_id=game['message_id']
-    )
+    saved_by_documents = criminal is not None and economy.use_item(game['players'][criminal]['id'], 'documents')
+
+    if criminal is None:
+        text = i18n.t(chat, 'town_no_criminal_chosen')
+    elif saved_by_documents:
+        text = i18n.t(
+            chat, 'criminal_saved_by_documents',
+            number=criminal + 1, name=game['players'][criminal]['name']
+        )
+    else:
+        text = i18n.t(
+            chat, 'town_voted_criminal_jailed',
+            number=criminal + 1, name=game['players'][criminal]['name']
+        )
+
+    bot.edit_message_text(text, chat_id=chat, message_id=game['message_id'])
 
     update_dict = {'$set': {'vote': {}}}
 
-    if criminal is not None:
+    if criminal is not None and not saved_by_documents:
         update_dict['$set'][f'players.{criminal}.alive'] = False
         update_dict['$set']['victim'] = game['players'][criminal]['id']
 
@@ -232,9 +256,10 @@ def last_words_criminal(game):
 
 @add_stage(3, 5)
 def night(game):
+    chat = game['chat']
     message_id = bot.send_message(
-        game['chat'],
-        f'Наступает ночь. Город засыпает. {role_titles["mafia"].capitalize()}, приготовьтесь к выстрелу...'
+        chat,
+        i18n.t(chat, 'night_falls_mafia_wakes', mafia=role_title('mafia', chat).capitalize())
     ).message_id
     database.games.update_one(
         {'_id': game['_id']},
@@ -247,6 +272,7 @@ def night(game):
 
 @add_stage(4, 5)
 def shooting_stage(game):
+    chat = game['chat']
     players = [(i, player) for i, player in enumerate(game['players']) if player['alive']]
     random.shuffle(players)
 
@@ -259,8 +285,8 @@ def shooting_stage(game):
     )
 
     bot.edit_message_text(
-        f'{role_titles["mafia"].capitalize()} выбирает жертву.\n' + format_roles(game),
-        chat_id=game['chat'],
+        i18n.t(chat, 'mafia_choosing_victim', mafia=role_title('mafia', chat).capitalize()) + format_roles(game),
+        chat_id=chat,
         message_id=game['message_id'],
         reply_markup=keyboard
     )
@@ -268,6 +294,7 @@ def shooting_stage(game):
 
 @add_stage(5, 10)
 def don_stage(game):
+    chat = game['chat']
     keyboard = InlineKeyboardMarkup(row_width=8)
     keyboard.add(
         *[InlineKeyboardButton(
@@ -277,8 +304,11 @@ def don_stage(game):
     )
 
     bot.edit_message_text(
-        f'{role_titles["mafia"].capitalize()} засыпает. {role_titles["don"].capitalize()} совершает свою проверку.\n' + format_roles(game),
-        chat_id=game['chat'],
+        i18n.t(
+            chat, 'mafia_sleeps_don_checks',
+            mafia=role_title('mafia', chat).capitalize(), don=role_title('don', chat).capitalize()
+        ) + format_roles(game),
+        chat_id=chat,
         message_id=game['message_id'],
         reply_markup=keyboard
     )
@@ -286,6 +316,7 @@ def don_stage(game):
 
 @add_stage(6, 10)
 def sheriff_stage(game):
+    chat = game['chat']
     keyboard = InlineKeyboardMarkup(row_width=8)
     keyboard.add(
         *[InlineKeyboardButton(
@@ -295,8 +326,11 @@ def sheriff_stage(game):
     )
 
     bot.edit_message_text(
-        f'{role_titles["don"].capitalize()} засыпает. Просыпается {role_titles["sheriff"]} и совершает свою проверку.\n{format_roles(game)}',
-        chat_id=game['chat'],
+        i18n.t(
+            chat, 'don_sleeps_sheriff_checks',
+            don=role_title('don', chat).capitalize(), sheriff=role_title('sheriff', chat)
+        ) + format_roles(game),
+        chat_id=chat,
         message_id=game['message_id'],
         reply_markup=keyboard
     )
@@ -304,24 +338,41 @@ def sheriff_stage(game):
 
 @add_stage(7, 20)
 def last_words_victim(game):
+    chat = game['chat']
     update_dict = {'$set': {'shots': []}}
 
     mafia_shot = False
+    saved_by_protection = False
+    victim = None
     if len(set(game['shots'])) == 1 and len(game['shots']) == sum(p['role'] in ('don', 'mafia') and p['alive'] for p in game['players']):
         victim = game['shots'][0]
         if game['players'][victim]['alive']:
-            mafia_shot = True
-            update_dict['$set'][f'players.{victim}.alive'] = False
-            update_dict['$set']['victim'] = game['players'][victim]['id']
+            if economy.use_item(game['players'][victim]['id'], 'protection'):
+                saved_by_protection = True
+            else:
+                mafia_shot = True
+                update_dict['$set'][f'players.{victim}.alive'] = False
+                update_dict['$set']['victim'] = game['players'][victim]['id']
 
     database.games.update_one({'_id': game['_id']}, update_dict)
+
+    if saved_by_protection:
+        bot.send_message(
+            chat,
+            i18n.t(chat, 'victim_saved_by_protection', number=victim + 1, name=game['players'][victim]['name'])
+        )
+        go_to_next_stage(game)
+        return
 
     if not mafia_shot:
         go_to_next_stage(game)
         return
 
     bot.edit_message_text(
-        f'Доброе утро, город!\nПечальные новости: этой ночью был убит игрок {victim+1} ({game["players"][victim]["name"]}).',
-        chat_id=game['chat'],
+        i18n.t(
+            chat, 'morning_victim_killed',
+            number=victim + 1, name=game['players'][victim]['name']
+        ),
+        chat_id=chat,
         message_id=game['message_id']
     )

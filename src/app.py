@@ -17,9 +17,13 @@
 import config
 from .logger import logger, log_update
 from .database import database
-from .game import stop_game, role_titles
+from .game import stop_game, role_title
 from .stages import go_to_next_stage
 from .bot import bot
+from . import tgdb
+from . import economy
+from . import stats
+from . import i18n
 
 import flask
 from time import time
@@ -50,22 +54,25 @@ def stage_cycle():
         for game in games_to_modify:
             game_state = is_game_over(game)
             if game_state:
-                role = role_titles['peace' if game_state == 1 else 'mafia']
+                winning_role = 'peace' if game_state == 1 else 'mafia'
                 for player in game['players']:
                     player_role = player['role'] if player['role'] != 'don' else 'mafia'
                     inc_dict = {'total': 1, f'{player_role}.total': 1}
-                    if (
+                    won = (
                         (game_state == 1 and player_role != 'mafia') or
                         (game_state == 2 and player_role == 'mafia')
-                    ):
+                    )
+                    if won:
                         inc_dict['win'] = 1
                         inc_dict[f'{player_role}.win'] = 1
-                    database.stats.update_one(
-                        {'id': player['id'], 'chat': game['chat']},
-                        {'$set': {'name': player['full_name']}, '$inc': inc_dict},
-                        upsert=True
-                    )
-                stop_game(game, reason=f'Победили игроки команды "{role}"!')
+                    stats.increment(game['chat'], player['id'], player['full_name'], inc_dict, save=False)
+                    if won:
+                        # Premium guruh bo'lsa 30$, aks holda 10$ (global_config'dan)
+                        premium = tgdb.get('premium_groups').get(str(game['chat']))
+                        reward = premium['win_reward'] if premium else tgdb.get('global_config')['game_win_reward']
+                        economy.add_balance(player['id'], reward, save=False)
+                tgdb.save()
+                stop_game(game, 'team_won', role=role_title(winning_role, game['chat']))
                 continue
 
             game = go_to_next_stage(game)
@@ -78,15 +85,20 @@ def croco_cycle():
         for game in games:
             if game['stage'] == 0:
                 database.games.update_one({'_id': game['_id']}, {'$set': {'stage': 1, 'time': curtime + 60}})
-                bot.try_to_send_message(game['chat'], f'{game["name"].capitalize()}, до конца игры осталась минута!')
+                bot.try_to_send_message(
+                    game['chat'], i18n.t(game['chat'], 'minute_left_warning', name=game['name'].capitalize())
+                )
             else:
                 database.games.delete_one({'_id': game['_id']})
-                bot.try_to_send_message(game['chat'], f'Игра окончена! {game["name"].capitalize()} проигрывает, загаданное слово было {game["word"]}.')
-                database.stats.update_one(
-                    {'id': game['player'], 'chat': game['chat']},
-                    {'$set': {'name': game['full_name']}, '$inc': {'croco.total': 1}},
-                    upsert=True
+                bot.try_to_send_message(
+                    game['chat'],
+                    i18n.t(
+                        game['chat'], 'croco_game_lost_word_was',
+                        name=game['name'].capitalize(), word=game['word']
+                    )
                 )
+                stats.increment(game['chat'], game['player'], game['full_name'], {'croco.total': 1})
+
 
 
 def start_thread(name=None, target=None, *args, daemon=True, **kwargs):
@@ -118,6 +130,9 @@ def run_app():
 
 
 def main():
+    logger.info('Telegram-DB yuklanmoqda...')
+    tgdb.load_all()
+
     start_thread('Stage Cycle', stage_cycle)
     start_thread('Removing Requests', remove_overtimed_requests)
     start_thread('Crocodile Cycle', croco_cycle)

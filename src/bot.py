@@ -37,16 +37,23 @@ class MafiaHostBot(TeleBot):
         def decorator(message, *args, **kwargs):
             game = database.games.find_one({'chat': message.chat.id})
             if game and game['game'] == 'mafia':
+                in_progress = game['stage'] not in (0, -4)
                 try:
                     player = next(p for p in game['players'] if p['id'] == message.from_user.id)
                 except StopIteration:
-                    delete = config.DELETE_FROM_EVERYONE and game['stage'] not in (0, -4)
+                    delete = config.DELETE_FROM_EVERYONE and in_progress
                 else:
                     if game['stage'] in (2, 7):
                         victim = game.get('victim')
                         delete = not player.get('alive', True) if victim is None else victim != message.from_user.id
                     else:
-                        delete = not player.get('alive', True) or game['stage'] not in (0, -4)
+                        delete = not player.get('alive', True) or in_progress
+
+                # O'yin ketayotganda faqat "!" bilan boshlangan xabarlarga ruxsat beriladi
+                # (o'yin tugmalar orqali boshqariladi, bu faqat erkin yozishuvni cheklaydi)
+                if not delete and in_progress and not (message.text or '').startswith('!'):
+                    delete = True
+
                 if delete:
                     self.safely_delete_message(chat_id=message.chat.id, message_id=message.message_id)
                     return

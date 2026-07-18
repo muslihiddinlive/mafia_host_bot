@@ -16,7 +16,9 @@
 
 from .bot import bot
 from .database import database
-from . import lang
+from . import i18n
+from . import stats
+from . import tgdb
 
 import re
 from enum import Enum, auto
@@ -41,6 +43,7 @@ def get_stats(game):
 
 
 def set_gallows(game, result, word, stats=None):
+    chat = game['chat']
     if game['names']:
         if stats is None:
             stats = get_stats(game)
@@ -48,14 +51,20 @@ def set_gallows(game, result, word, stats=None):
         players = '\n\n' + '\n'.join(f'{u["name"]}: ✔️{u["right"]} ❌{u["wrong"]}' for u in users)
     else:
         players = ''
+
+    attempts = (
+        f'\n{i18n.t(chat, "gallows_attempts_label")}: ' + ', '.join(game['wrong'])
+        if game['wrong'] else ''
+    )
+
+    # ASCII rasm tildan mustaqil, shuning uchun tarjima lug'atida emas, shu yerda qoladi.
+    ascii_art = (
+        '<code>___________\n|         |\n|        %s\n|        %s\n|        %s\n|\n|</code>\n'
+    ) % stickman[len(game['wrong'])]
+
     bot.edit_message_text(
-        lang.gallows.format(
-            result=result,
-            word=word,
-            attempts='\nПопытки: ' + ', '.join(game['wrong']) if game['wrong'] else '',
-            players=players
-        ) % stickman[len(game['wrong'])],
-        chat_id=game['chat'],
+        f'{ascii_art}{result}\n{i18n.t(chat, "gallows_word_label")}: {word}{attempts}{players}',
+        chat_id=chat,
         message_id=game['message_id'],
         parse_mode='HTML'
     )
@@ -67,13 +76,14 @@ class GameResult(Enum):
 
 
 def end_game(game, game_result):
+    chat = game['chat']
     if game_result == GameResult.WIN:
-        result = 'Вы победили!'
+        result = i18n.t(chat, 'gallows_won')
     elif game_result == GameResult.LOSE:
-        result = 'Вы проиграли.'
-    stats = get_stats(game)
-    set_gallows(game, result, ' '.join(list(game['word'])), stats=stats)
-    for id, s in stats.items():
+        result = i18n.t(chat, 'gallows_lost')
+    game_stats = get_stats(game)
+    set_gallows(game, result, ' '.join(list(game['word'])), stats=game_stats)
+    for id, s in game_stats.items():
         increments = {
             'gallows.right': s['right'],
             'gallows.wrong': s['wrong'],
@@ -81,11 +91,8 @@ def end_game(game, game_result):
         }
         if game_result == GameResult.WIN and s['right']:
             increments['gallows.win'] = 1
-        database.stats.update_one(
-            {'id': id, 'chat': game['chat']},
-            {'$inc': increments},
-            upsert=True
-        )
+        stats.increment(chat, id, s['name'], increments, save=False)
+    tgdb.save()
     database.games.delete_one({'_id': game['_id']})
 
 
@@ -100,11 +107,13 @@ def gallows_suggestion(suggestion, game, user, message_id):
             end_game(game, GameResult.WIN)
         return
 
+    # DIQQAT: so'z bazasi (config.WORD_BASE) va harf tekshiruvi hozircha faqat rus
+    # alifbosiga mo'ljallangan - buni boshqa tillarga o'tkazish alohida so'z bazasi talab qiladi.
     if not 'А' <= suggestion <= 'я':
         return
 
     if suggestion in game['wrong'] or suggestion in game['right']:
-        bot.send_message(game['chat'], 'Эта буква уже выбиралась.')
+        bot.send_message(game['chat'], i18n.t(game['chat'], 'letter_already_chosen'))
         return
 
     word = list(game['word'])

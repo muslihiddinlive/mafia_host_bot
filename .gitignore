@@ -56,3 +56,6 @@ instance/
 
 # Project files:
 config.py
+
+# Telegram-DB local nusxasi (haqiqiy nusxa Telegram guruhida saqlanadi):
+data/
