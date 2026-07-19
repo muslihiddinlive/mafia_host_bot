@@ -1,39 +1,68 @@
 # O'rnatish
 
-## 1. config.py yaratish
-```bash
-cp config.py.sample config.py
-```
-Va to'ldiring:
-- `TOKEN` — @BotFather'dan olingan token
-- `ADMIN_ID` — sizning Telegram user ID'ingiz (superadmin)
-- `DB_CHAT_ID` — pastga qarang
-- `WORD_BASE` — croco/gallows uchun rus so'zlar bazasi fayli yo'li
+Konfiguratsiya endi **environment variable** orqali beriladi (`config.py` fayli
+git'ga tushadi, sirlarni o'zida saqlamaydi - faqat ularni o'qish mantig'i bor).
+
+## 1. Kerakli ENV o'zgaruvchilar
+
+| Nomi | Majburiymi | Tavsif |
+|---|---|---|
+| `TOKEN` | ✅ | @BotFather'dan olingan bot token |
+| `ADMIN_ID` | ✅ | Sizning Telegram user ID'ingiz (superadmin) |
+| `DB_CHAT_ID` | ✅ | Pastga qarang (2-bo'lim) |
+| `WEBHOOK_URL` | Render avtomatik beradi | `SET_WEBHOOK=true` bo'lsa kerak (Render'da odatda kerak emas) |
+| `SET_WEBHOOK` | ❌ (standart: true) | false = long polling |
+| `SKIP_PENDING` | ❌ (standart: false) | Eski xabarlarni o'tkazib yuborish |
+| `PLAYERS_COUNT_TO_START` | ❌ (standart: 4) | O'yin boshlash uchun minimal o'yinchi |
+| `PLAYERS_COUNT_LIMIT` | ❌ (standart: 10) | Maksimal o'yinchi |
+| `REQUEST_OVERDUE_TIME` | ❌ (standart: 600) | So'rov necha soniyada eskirishi |
+| `WORD_BASE` | ❌ (standart: `/root/words.txt`) | croco/gallows so'zlar bazasi fayli |
+| `DELETE_FROM_EVERYONE` | ❌ (standart: false) | O'yin paytida hammaning xabarini o'chirish |
+| `LOGGER_LEVEL` | ❌ (standart: INFO) | Log darajasi |
+
+To'liq namuna uchun `.env.example` fayliga qarang (lokal test qilishda shu faylni
+`.env` deb nomlab, haqiqiy qiymatlar bilan to'ldiring - Render'da bu fayl kerak emas).
 
 ## 2. DB_CHAT_ID uchun supergroup yaratish
 1. Yopiq (private) **supergroup** yarating (oddiy guruh emas)
 2. Botni o'sha guruhga qo'shing va **admin** qiling (pin, edit, delete, invite huquqlari bilan)
-3. Guruh ID'sini oling (masalan @getidsbot yordamida yoki botga biror xabar yozib, `update.message.chat.id` orqali) — odatda `-100` bilan boshlanadi
-4. Shu ID'ni `config.py`dagi `DB_CHAT_ID`ga yozing
+3. Guruh ID'sini oling (masalan @getidsbot yordamida) — odatda `-100` bilan boshlanadi
+4. Shu ID'ni `DB_CHAT_ID` environment variable'iga yozing
 
-Bu guruhda pul/olmos/statistika/shop/til/premium ma'lumotlari bitta JSON fayl (document) sifatida saqlanadi va pin qilinadi. Diskni istalgancha tozalasangiz ham (masalan Render qayta deploy qilganda) — bot shu pin qilingan fayldan avtomatik tiklanadi.
+Bu guruhda pul/olmos/statistika/shop/til/premium ma'lumotlari bitta JSON fayl
+(document) sifatida saqlanadi va pin qilinadi. Diskni istalgancha tozalasangiz
+ham (masalan Render qayta deploy qilganda) — bot shu pin qilingan fayldan
+avtomatik tiklanadi.
 
-## 3. O'rnatish
+## 3. Render'da joylashtirish (Web Service)
+1. Render Dashboard'da yangi **Web Service** yarating, shu repo'ni ulang
+2. **Build Command:** `pip install -r requirements.txt`
+3. **Start Command:** `python __main__.py`
+4. **Environment** bo'limiga yuqoridagi jadvaldagi ENV'larni kiriting
+   (`WEBHOOK_URL`ni hozircha bo'sh qoldirsangiz ham bo'ladi - Render
+   `RENDER_EXTERNAL_URL`ni o'zi avtomatik beradi)
+5. Deploy qiling
+6. `WORD_BASE` fayli konteynerda mavjud bo'lishi kerak - aks holda bot
+   ishga tushishning o'zidayoq xato beradi (croco/gallows uchun kerak)
+7. Bepul tarifda servis harakatsizlikdan uxlab qoladi — **UptimeRobot**
+   (yoki shunga o'xshash) bilan har 5-10 daqiqada asosiy manzilga ping
+   yuborib turing, aks holda Telegram'dan kelayotgan xabarlar servis
+   uyg'onguncha yo'qolib qolishi mumkin
+
+## 4. Lokal test qilish
 ```bash
+cp .env.example .env
+# .env faylni haqiqiy qiymatlar bilan toʻldiring
 pip install -r requirements.txt --break-system-packages
-python -m src
+python __main__.py
 ```
 
-**MongoDB kerak emas** — barcha ma'lumotlar yo tepadagi Telegram guruhida (doimiy), yo dastur xotirasida (vaqtinchalik: faol o'yinlar) saqlanadi.
+**MongoDB kerak emas** — barcha ma'lumotlar yo yuqoridagi Telegram guruhida
+(doimiy), yo dastur xotirasida (vaqtinchalik: faol o'yinlar) saqlanadi. Faqat
+bitta process/dyno bilan ishlang — xotiradagi faol o'yin holati processlar
+o'rtasida almashinmaydi.
 
-## 4. Render'da joylashtirish (Web Service)
-- **Build Command:** `pip install -r requirements.txt`
-- **Start Command:** `python __main__.py`
-- Render `PORT` environment variable'ni avtomatik beradi — `config.py`da qo'lda o'zgartirish shart emas
-- **Muhim tartib:** birinchi marta deploy qiling (hali `WEBHOOK_URL` noto'g'ri bo'lsa ham) → Render sizga `https://xxx.onrender.com` manzilini beradi → shu manzilni `config.py`dagi `WEBHOOK_URL`ga yozing → qayta deploy/restart qiling
-- Bepul tarifda servis harakatsizlikdan uxlab qoladi — **UptimeRobot** (yoki shunga o'xshash) bilan har 5-10 daqiqada `https://xxx.onrender.com/` ga ping yuborib turing, aks holda Telegram'dan kelayotgan xabarlar servis uyg'onguncha yo'qolib qolishi mumkin
-
-
+## Superadmin buyruqlari (asosiylari)
 - `/narx <nom> <qiymat>` — shop narxini o'zgartirish
 - `/sozlama <nom> <qiymat>` — referral/olmos kurslari va h.k.
 - `/pulber <user_id yoki javoban> <miqdor> [olmos]` — pul/olmos berish
@@ -46,8 +75,10 @@ python -m src
 - `.ban` `.unban` `.mute minut.soat.kun.oy` `.unmute` `.info` — (guruh a'zosiga javoban, guruh admin yoki superadmin uchun)
 
 ## Til
-`/til <ru|uz|tr|en|kk>` — asosiy o'yin (mafia/croco/gallows) shu 5 tilda. Yangi economy/shop/premium buyruqlari hozircha faqat o'zbekcha.
+`/til <ru|uz|tr|en|kk>` — asosiy o'yin (mafia/croco/gallows) shu 5 tilda. Yangi
+economy/shop/premium buyruqlari hozircha faqat o'zbekcha.
 
 ## Ma'lum cheklovlar
-- Croco/Gallows so'z bazasi va harf tekshiruvi faqat rus tilida (alohida so'z bazalari kerak boshqa tillar uchun)
-- Shop itemlari (Hujjatlar/Ximoya/Faol rol/2x ovoz) o'yin mexanikasiga ulangan, lekin ularning aniq ma'nosi (masalan "Hujjatlar" = kunduzi qamoqdan qutqaradi) mening taxminim - agar boshqacha bo'lishi kerak bo'lsa, `stages.py`dagi `last_words_criminal`/`last_words_victim` va `handlers.py`dagi `start_game`/`vote` funksiyalarini o'zgartirish kerak bo'ladi
+- Croco/Gallows so'z bazasi va harf tekshiruvi faqat rus tilida
+- Telegram Stars orqali olmos xaridi kod jihatidan tayyor, lekin haqiqiy
+  to'lov bilan hali sinalmagan

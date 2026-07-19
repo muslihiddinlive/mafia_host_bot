@@ -54,8 +54,8 @@ coverage.xml
 instance/
 .webassets-cache
 
-# Project files:
-config.py
+# Sirlar (.env - lokal ishlashda; Render'da Environment sozlamalari ishlatiladi):
+.env
 
 # Telegram-DB local nusxasi (haqiqiy nusxa Telegram guruhida saqlanadi):
 data/
