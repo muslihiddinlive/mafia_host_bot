@@ -202,7 +202,7 @@ def play_croco(message, game, *args, **kwargs):
     if game:
         bot.send_message(message.chat.id, i18n.t(message.chat.id, 'game_already_running'))
         return
-    word = croco.get_word()[:-2]
+    word = croco.get_word()
     id = str(uuid4())[:8]
     keyboard = InlineKeyboardMarkup()
     keyboard.add(
@@ -239,7 +239,7 @@ def play_gallows(message, game, *args, **kwargs):
         else:
             bot.send_message(message.chat.id, already_running)
         return
-    word = croco.get_word()[:-2]
+    word = croco.get_word()
     word_label = i18n.t(message.chat.id, 'gallows_word_label')
     ascii_art = (
         '<code>___________\n|         |\n|        %s\n|        %s\n|        %s\n|\n|</code>\n'

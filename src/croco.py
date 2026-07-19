@@ -23,19 +23,14 @@ from . import stats
 import re
 import codecs
 import random
-from os.path import getsize
 
 
-BASE_SIZE = getsize(config.WORD_BASE)
+with codecs.open(config.WORD_BASE, 'r', encoding='utf-8') as base:
+    WORDS = [line.strip() for line in base if line.strip()]
 
 
 def get_word():
-    with codecs.open(config.WORD_BASE, 'r', encoding='cp1251') as base:
-        offset = random.randrange(BASE_SIZE)
-        base.seek(offset)
-        base.readline()
-        word = base.readline()
-    return word
+    return random.choice(WORDS)
 
 
 def croco_suggestion(suggestion, game, user, message_id):

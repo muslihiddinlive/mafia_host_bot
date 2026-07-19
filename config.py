@@ -52,7 +52,7 @@ SKIP_PENDING = _bool('SKIP_PENDING', False)  # Bot ishga tushganda eski xabarlar
 PLAYERS_COUNT_TO_START = int(os.environ.get('PLAYERS_COUNT_TO_START', 4))
 PLAYERS_COUNT_LIMIT = int(os.environ.get('PLAYERS_COUNT_LIMIT', 10))
 REQUEST_OVERDUE_TIME = int(os.environ.get('REQUEST_OVERDUE_TIME', 10 * 60))
-WORD_BASE = os.environ.get('WORD_BASE', '/root/words.txt')  # cp1251 kodli, har qatorda bitta so'z
+WORD_BASE = os.environ.get('WORD_BASE', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'words.txt'))
 DELETE_FROM_EVERYONE = _bool('DELETE_FROM_EVERYONE', False)
 
 # ---------------------------------------------------------------------------
