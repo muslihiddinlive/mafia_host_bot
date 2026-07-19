@@ -26,7 +26,14 @@ python -m src
 
 **MongoDB kerak emas** — barcha ma'lumotlar yo tepadagi Telegram guruhida (doimiy), yo dastur xotirasida (vaqtinchalik: faol o'yinlar) saqlanadi.
 
-## Superadmin buyruqlari (asosiylari)
+## 4. Render'da joylashtirish (Web Service)
+- **Build Command:** `pip install -r requirements.txt`
+- **Start Command:** `python __main__.py`
+- Render `PORT` environment variable'ni avtomatik beradi — `config.py`da qo'lda o'zgartirish shart emas
+- **Muhim tartib:** birinchi marta deploy qiling (hali `WEBHOOK_URL` noto'g'ri bo'lsa ham) → Render sizga `https://xxx.onrender.com` manzilini beradi → shu manzilni `config.py`dagi `WEBHOOK_URL`ga yozing → qayta deploy/restart qiling
+- Bepul tarifda servis harakatsizlikdan uxlab qoladi — **UptimeRobot** (yoki shunga o'xshash) bilan har 5-10 daqiqada `https://xxx.onrender.com/` ga ping yuborib turing, aks holda Telegram'dan kelayotgan xabarlar servis uyg'onguncha yo'qolib qolishi mumkin
+
+
 - `/narx <nom> <qiymat>` — shop narxini o'zgartirish
 - `/sozlama <nom> <qiymat>` — referral/olmos kurslari va h.k.
 - `/pulber <user_id yoki javoban> <miqdor> [olmos]` — pul/olmos berish

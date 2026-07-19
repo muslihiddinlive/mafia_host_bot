@@ -150,6 +150,11 @@ def _query_to_new_doc(query):
     return doc
 
 
+class DeleteResult:
+    def __init__(self, deleted_count):
+        self.deleted_count = deleted_count
+
+
 class MockCollection:
     def __init__(self):
         self._docs = []
@@ -235,12 +240,15 @@ class MockCollection:
             for i, doc in enumerate(self._docs):
                 if _matches(doc, query):
                     self._docs.pop(i)
-                    return
+                    return DeleteResult(1)
+        return DeleteResult(0)
 
     def delete_many(self, query=None):
         query = query or {}
         with self._lock:
+            before = len(self._docs)
             self._docs[:] = [doc for doc in self._docs if not _matches(doc, query)]
+            return DeleteResult(before - len(self._docs))
 
 
 class MockDatabase:

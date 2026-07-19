@@ -121,10 +121,12 @@ def run_app():
         else:
             flask.abort(403)
 
+    # Render HTTPS'ni oʻzi boshqaradi (SSL sertifikat kerak emas) - shuning uchun
+    # oddiy HTTP orqali 0.0.0.0'ga (barcha interfeyslarga) ulanamiz, port esa
+    # Render bergan PORT environment variable'dan (config.SERVER_PORT) olinadi.
     app.run(
-        host=config.SERVER_IP,
+        host='0.0.0.0',
         port=config.SERVER_PORT,
-        ssl_context=(config.SSL_CERT, config.SSL_PRIV),
         debug=False
     )
 
@@ -138,10 +140,10 @@ def main():
     start_thread('Crocodile Cycle', croco_cycle)
 
     if config.SET_WEBHOOK:
-        url = f'https://{config.SERVER_IP}:{config.SERVER_PORT}/'
-        logger.debug(f'Запускаю приложение по адресу {url}')
-        run_app()
+        url = f'{config.WEBHOOK_URL}/{config.TOKEN}'
         bot.remove_webhook()
-        bot.set_webhook(url=url + config.TOKEN)
+        bot.set_webhook(url=url)
+        logger.debug(f'Webhook oʻrnatildi: {url}. Server ishga tushmoqda...')
+        run_app()
     else:
         bot.polling()
