@@ -30,6 +30,7 @@ from .bot import bot
 from telebot.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
     LabeledPrice, ReactionTypeEmoji, ChatPermissions,
+    KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove,
 )
 from telebot.handler_backends import ContinueHandling
 
@@ -1260,21 +1261,18 @@ def buy_item_callback(call, *args, **kwargs):
         bot.answer_callback_query(call.id, 'Balans/olmos yetarli emas.', show_alert=True)
 
 
-# ==================== OLMOS SOTIB OLISH (Telegram Stars) ====================
+# ==================== OLMOS SOTIB OLISH (Telegram Stars + admin orqali) ====================
 
-@bot.message_handler(func=lambda message: message.chat.type == 'private', commands=['olmos'])
-def diamonds_command(message, *args, **kwargs):
-    parts = message.text.split()
+def _has_contact_info(user_id):
+    contact = economy.get_user(user_id).get('contact_info', {})
+    return all(contact.get(k) for k in ('phone', 'email', 'username'))
+
+
+def _send_diamonds_invoice(chat_id, diamonds):
     rate = tgdb.get('global_config')['stars_per_diamond']
-    diamonds = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 1
-
-    if diamonds < 1:
-        bot.send_message(message.chat.id, 'Kamida 1 olmos tanlang. Masalan: /olmos 5')
-        return
-
     stars = diamonds * rate
     bot.send_invoice(
-        message.chat.id,
+        chat_id,
         title=f'{diamonds} olmos',
         description=f'{diamonds} olmos ({rate} Stars = 1 olmos)',
         invoice_payload=f'diamonds_{diamonds}',
@@ -1282,6 +1280,105 @@ def diamonds_command(message, *args, **kwargs):
         currency='XTR',
         prices=[LabeledPrice(label=f'{diamonds} olmos', amount=stars)],
     )
+
+
+def _start_contact_collection(message, diamonds):
+    markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+    markup.add(KeyboardButton('📱 Raqamni ulashish', request_contact=True))
+    msg = bot.send_message(
+        message.chat.id,
+        'Toʻlovdan oldin bir nechta maʼlumot kerak boʻladi.\n\n'
+        'Telefon raqamingizni yuboring (tugma orqali yoki qoʻlda yozib):',
+        reply_markup=markup
+    )
+    bot.register_next_step_handler(msg, _collect_phone, diamonds=diamonds)
+
+
+def _collect_phone(message, diamonds):
+    phone = message.contact.phone_number if message.contact else message.text
+    user = economy.get_user(message.from_user.id)
+    user.setdefault('contact_info', {})['phone'] = phone
+    tgdb.save()
+    msg = bot.send_message(
+        message.chat.id, 'Endi email manzilingizni yuboring:',
+        reply_markup=ReplyKeyboardRemove()
+    )
+    bot.register_next_step_handler(msg, _collect_email, diamonds=diamonds)
+
+
+def _collect_email(message, diamonds):
+    user = economy.get_user(message.from_user.id)
+    user.setdefault('contact_info', {})['email'] = message.text
+    tgdb.save()
+    msg = bot.send_message(message.chat.id, 'Va nihoyat, username (nik)ingizni yuboring:')
+    bot.register_next_step_handler(msg, _collect_username, diamonds=diamonds)
+
+
+def _collect_username(message, diamonds):
+    user = economy.get_user(message.from_user.id)
+    user.setdefault('contact_info', {})['username'] = message.text
+    tgdb.save()
+    bot.send_message(message.chat.id, 'Rahmat! Endi toʻlovga oʻtamiz.')
+    _send_diamonds_invoice(message.chat.id, diamonds)
+
+
+@bot.message_handler(func=lambda message: message.chat.type == 'private', commands=['olmos'])
+def diamonds_command(message, *args, **kwargs):
+    parts = message.text.split()
+    diamonds = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 1
+
+    if diamonds < 1:
+        bot.send_message(message.chat.id, 'Kamida 1 olmos tanlang. Masalan: /olmos 5')
+        return
+
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton('⭐ Stars orqali sotib olish', callback_data=f'buy_stars_{diamonds}'))
+    markup.add(InlineKeyboardButton('📞 Admin bilan bogʻlanish', callback_data='contact_admin_buy'))
+    bot.send_message(message.chat.id, f'{diamonds}💎 sotib olish usulini tanlang:', reply_markup=markup)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('buy_stars_'))
+def buy_stars_callback(call):
+    diamonds = int(call.data[len('buy_stars_'):])
+    bot.answer_callback_query(call.id)
+    if _has_contact_info(call.from_user.id):
+        _send_diamonds_invoice(call.message.chat.id, diamonds)
+    else:
+        _start_contact_collection(call.message, diamonds)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'contact_admin_buy')
+def contact_admin_buy_callback(call):
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(call.message.chat.id, 'Nechta olmos sotib olmoqchisiz? (son kiriting)')
+    bot.register_next_step_handler(msg, _contact_admin_diamonds)
+
+
+def _contact_admin_diamonds(message):
+    diamonds_wanted = message.text
+    msg = bot.send_message(
+        message.chat.id,
+        'Siz bilan bogʻlanish uchun telefon raqam yoki username qoldiring:'
+    )
+    bot.register_next_step_handler(msg, _contact_admin_contact, diamonds_wanted=diamonds_wanted)
+
+
+def _contact_admin_contact(message, diamonds_wanted):
+    user = message.from_user
+    superadmins = set(tgdb.get('global_config')['superadmins']) | {config.ADMIN_ID}
+    notify_text = (
+        f'🛒 Yangi olmos xarid soʻrovi!\n'
+        f'Foydalanuvchi: {get_name(user)} (ID: {user.id})\n'
+        f'Xohlagan olmos: {diamonds_wanted}\n'
+        f'Bogʻlanish uchun qoldirgani: {message.text}'
+    )
+    for admin_id in superadmins:
+        try:
+            bot.send_message(admin_id, notify_text)
+        except Exception:
+            logger.debug(f'{admin_id} ga xabar yuborib boʻlmadi', exc_info=True)
+
+    bot.send_message(message.chat.id, 'Soʻrovingiz adminga yuborildi, tez orada bogʻlanishadi!')
 
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
